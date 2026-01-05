@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import random
 
 # ----------------------------------
@@ -78,8 +78,5 @@ if st.button("Run Optimization"):
         st.write(f"Lane {i+1}: {t:.2f} seconds")
 
     st.subheader("Convergence Curve")
-    fig, ax = plt.subplots()
-    ax.plot(history)
-    ax.set_xlabel("Generation")
-    ax.set_ylabel("Best Fitness Value")
-    st.pyplot(fig)
+    st.line_chart(history)
+
