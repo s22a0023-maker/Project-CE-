@@ -10,7 +10,7 @@ import random
 data = pd.read_csv("traffic_dataset.csv")
 
 vehicle_count = data['vehicle_count'].values
-avg_wait = data['avg_wait_time'].values
+avg_wait = data['average_speed'].values
 lanes = len(vehicle_count)
 
 # ----------------------------------
