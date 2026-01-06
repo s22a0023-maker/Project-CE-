@@ -21,7 +21,7 @@ st.write("Computational Evolution Case Study")
 # -------------------------------
 @st.cache_data
 def load_data():
-    return pd.read_csv("traffic_dataset.csv")
+    return pd.read_csv(r"C:\Users\user\Documents\UMK\final sem\CE\project\GA\traffic_dataset.csv")
 
 df = load_data()
 
@@ -39,16 +39,16 @@ MUTATION_RATE = st.sidebar.slider("Mutation Rate", 0.01, 0.5, 0.1)
 
 TRAFFIC_FLOW = st.sidebar.slider(
     "Traffic Flow (vehicles/hour)", 
-    int(df["traffic_flow"].min()), 
-    int(df["traffic_flow"].max()), 
-    int(df["traffic_flow"].mean())
+    int(df["flow_rate"].min()), 
+    int(df["flow_rate"].max()), 
+    int(df["flow_rate"].mean())
 )
 
 QUEUE_LENGTH = st.sidebar.slider(
     "Average Queue Length", 
-    int(df["queue_length"].min()), 
-    int(df["queue_length"].max()), 
-    int(df["queue_length"].mean())
+    int(df["lane_occupancy"].min()), 
+    int(df["lane_occupancy"].max()), 
+    int(df["lane_occupancy"].mean())
 )
 
 MODE = st.sidebar.radio(
@@ -69,13 +69,13 @@ def initialize_population(size):
         for _ in range(size)
     ]
 
-def single_objective_fitness(individual, traffic_flow):
-    avg_wait = traffic_flow / sum(individual)
+def single_objective_fitness(individual, flow_rate):
+    avg_wait = flow_rate / sum(individual)
     return 1 / (1 + avg_wait)
 
-def multi_objective_fitness(individual, traffic_flow, queue_length):
-    wait_score = 1 / (1 + (traffic_flow / sum(individual)))
-    queue_score = 1 / (1 + queue_length)
+def multi_objective_fitness(individual, flow_rate, lane_occupancy):
+    wait_score = 1 / (1 + (flow_rate / sum(individual)))
+    queue_score = 1 / (1 + lane_occupancy)
     return 0.6 * wait_score + 0.4 * queue_score
 
 def selection(population, fitnesses):
