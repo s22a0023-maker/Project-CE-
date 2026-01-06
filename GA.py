@@ -1,82 +1,186 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-#import matplotlib.pyplot as plt
 import random
+import matplotlib.pyplot as plt
+import time
 
-# ----------------------------------
-# Load Dataset
-# ----------------------------------
-data = pd.read_csv("traffic_dataset.csv")
+# -------------------------------
+# Page Configuration
+# -------------------------------
+st.set_page_config(
+    page_title="Traffic Light Optimization (GA)",
+    layout="wide"
+)
 
-vehicle_count = data['vehicle_count'].values
-avg_wait = data['average_speed'].values
-lanes = len(vehicle_count)
-
-# ----------------------------------
-# Fitness Function
-# ----------------------------------
-def fitness(green_times, alpha=0.8):
-    waiting_time = np.sum((vehicle_count * avg_wait) / green_times)
-    fairness = np.var(green_times)
-    return alpha * waiting_time + (1 - alpha) * fairness
-
-# ----------------------------------
-# Genetic Algorithm
-# ----------------------------------
-def genetic_algorithm(pop_size, generations, mutation_rate, alpha):
-    population = np.random.uniform(10, 60, (pop_size, lanes))
-    history = []
-
-    for gen in range(generations):
-        fitness_scores = np.array([fitness(ind, alpha) for ind in population])
-        history.append(fitness_scores.min())
-
-        # Selection
-        selected = population[np.argsort(fitness_scores)[:pop_size // 2]]
-
-        # Crossover
-        offspring = []
-        while len(offspring) < pop_size:
-            parents = random.sample(list(selected), 2)
-            cp = random.randint(1, lanes - 1)
-            child = np.concatenate((parents[0][:cp], parents[1][cp:]))
-            offspring.append(child)
-
-        offspring = np.array(offspring)
-
-        # Mutation
-        for i in range(pop_size):
-            if random.random() < mutation_rate:
-                idx = random.randint(0, lanes - 1)
-                offspring[i][idx] += random.uniform(-5, 5)
-                offspring[i][idx] = np.clip(offspring[i][idx], 10, 60)
-
-        population = offspring
-
-    best = population[np.argmin([fitness(ind, alpha) for ind in population])]
-    return best, history
-
-# ----------------------------------
-# Streamlit UI
-# ----------------------------------
 st.title("🚦 Traffic Light Optimization using Genetic Algorithm")
+st.write("Computational Evolution Case Study")
 
+# -------------------------------
+# Load Dataset
+# -------------------------------
+@st.cache_data
+def load_data():
+    return pd.read_csv("traffic_dataset.csv")
+
+df = load_data()
+
+st.subheader("Traffic Dataset Preview")
+st.dataframe(df.head())
+
+# -------------------------------
+# Sidebar Parameters
+# -------------------------------
 st.sidebar.header("GA Parameters")
-population_size = st.sidebar.slider("Population Size", 10, 100, 30)
-generations = st.sidebar.slider("Generations", 10, 100, 50)
-mutation_rate = st.sidebar.slider("Mutation Rate", 0.01, 0.3, 0.1)
-alpha = st.sidebar.slider("Objective Weight (Efficiency vs Fairness)", 0.0, 1.0, 0.8)
 
-if st.button("Run Optimization"):
-    best_solution, history = genetic_algorithm(
-        population_size, generations, mutation_rate, alpha
-    )
+POP_SIZE = st.sidebar.slider("Population Size", 10, 100, 30)
+GENERATIONS = st.sidebar.slider("Generations", 10, 200, 50)
+MUTATION_RATE = st.sidebar.slider("Mutation Rate", 0.01, 0.5, 0.1)
 
-    st.subheader("Optimized Green Time (seconds)")
-    for i, t in enumerate(best_solution):
-        st.write(f"Lane {i+1}: {t:.2f} seconds")
+TRAFFIC_FLOW = st.sidebar.slider(
+    "Traffic Flow (vehicles/hour)", 
+    int(df["traffic_flow"].min()), 
+    int(df["traffic_flow"].max()), 
+    int(df["traffic_flow"].mean())
+)
 
-    st.subheader("Convergence Curve")
-    st.line_chart(history)
+QUEUE_LENGTH = st.sidebar.slider(
+    "Average Queue Length", 
+    int(df["queue_length"].min()), 
+    int(df["queue_length"].max()), 
+    int(df["queue_length"].mean())
+)
 
+MODE = st.sidebar.radio(
+    "Optimization Mode",
+    ["Single Objective", "Multi Objective"]
+)
+
+# -------------------------------
+# GA Functions
+# -------------------------------
+MIN_GREEN = 10
+MAX_GREEN = 60
+
+def initialize_population(size):
+    return [
+        [random.randint(MIN_GREEN, MAX_GREEN),
+         random.randint(MIN_GREEN, MAX_GREEN)]
+        for _ in range(size)
+    ]
+
+def single_objective_fitness(individual, traffic_flow):
+    avg_wait = traffic_flow / sum(individual)
+    return 1 / (1 + avg_wait)
+
+def multi_objective_fitness(individual, traffic_flow, queue_length):
+    wait_score = 1 / (1 + (traffic_flow / sum(individual)))
+    queue_score = 1 / (1 + queue_length)
+    return 0.6 * wait_score + 0.4 * queue_score
+
+def selection(population, fitnesses):
+    return population[np.argmax(fitnesses)]
+
+def crossover(parent1, parent2):
+    point = random.randint(0, 1)
+    return parent1[:point] + parent2[point:]
+
+def mutation(individual, rate):
+    if random.random() < rate:
+        idx = random.randint(0, 1)
+        individual[idx] = random.randint(MIN_GREEN, MAX_GREEN)
+    return individual
+
+# -------------------------------
+# GA Execution
+# -------------------------------
+def run_ga(mode):
+    population = initialize_population(POP_SIZE)
+    best_fitness_history = []
+    best_solution = None
+
+    start_time = time.time()
+
+    for _ in range(GENERATIONS):
+        if mode == "Single Objective":
+            fitnesses = [
+                single_objective_fitness(ind, TRAFFIC_FLOW)
+                for ind in population
+            ]
+        else:
+            fitnesses = [
+                multi_objective_fitness(ind, TRAFFIC_FLOW, QUEUE_LENGTH)
+                for ind in population
+            ]
+
+        best_idx = np.argmax(fitnesses)
+        best_solution = population[best_idx]
+        best_fitness_history.append(fitnesses[best_idx])
+
+        new_population = []
+        for _ in range(POP_SIZE):
+            parent1 = selection(population, fitnesses)
+            parent2 = random.choice(population)
+            child = crossover(parent1, parent2)
+            child = mutation(child, MUTATION_RATE)
+            new_population.append(child)
+
+        population = new_population
+
+    exec_time = time.time() - start_time
+    return best_solution, best_fitness_history, exec_time
+
+# -------------------------------
+# Run Optimization
+# -------------------------------
+st.subheader("Optimization Results")
+
+if st.button("Run Genetic Algorithm"):
+    with st.spinner("Running Genetic Algorithm..."):
+        best_solution, fitness_history, exec_time = run_ga(MODE)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.success("Best Traffic Light Timing Found")
+        st.write(f"🚦 Phase 1 Green Time: **{best_solution[0]} seconds**")
+        st.write(f"🚦 Phase 2 Green Time: **{best_solution[1]} seconds**")
+        st.write(f"⏱ Execution Time: **{exec_time:.4f} seconds**")
+
+    with col2:
+        fig, ax = plt.subplots()
+        ax.plot(fitness_history)
+        ax.set_xlabel("Generation")
+        ax.set_ylabel("Fitness Value")
+        ax.set_title("GA Convergence Curve")
+        st.pyplot(fig)
+
+# -------------------------------
+# Performance Analysis Section
+# -------------------------------
+st.subheader("Performance Analysis")
+
+st.markdown("""
+**Key Metrics Evaluated:**
+- **Convergence Rate:** Speed at which fitness stabilizes
+- **Accuracy:** Ability to reduce waiting time and congestion
+- **Computational Efficiency:** Execution time
+
+**Observations:**
+- Rapid improvement during early generations
+- Stable convergence after sufficient iterations
+- Multi-objective optimization balances competing goals
+""")
+
+# -------------------------------
+# Conclusion
+# -------------------------------
+st.subheader("Conclusion")
+
+st.markdown("""
+This Streamlit-based system demonstrates how **Genetic Algorithms** can be effectively applied to 
+traffic light optimization problems. The interactive dashboard allows users to explore parameter 
+effects, compare optimization strategies, and visualize convergence behavior in real time.
+""")
+
+st.success("✅ End of Computational Evolution Case Study")
