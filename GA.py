@@ -10,15 +10,15 @@ import matplotlib.pyplot as plt
 # ==============================
 @st.cache_data
 def load_data():
-    return pd.read_csv("traffic_dataset.csv")
+    return pd.read_csv("/mnt/data/traffic_dataset.csv")
 
 data = load_data()
 
 # Assume dataset has:
-# flow_rate, waiting_time, vehicle_count
-flow_rate = data["flow_rate"].values
-base_wait_time = data["waiting_time"].values
-vehicle_count = data["vehicle_count"].values
+# traffic_volume, avg_wait_time, queue_length
+traffic_volume = data["traffic_volume"].values
+base_wait_time = data["avg_wait_time"].values
+queue_length = data["queue_length"].values
 
 # ==============================
 # GA PARAMETERS (Streamlit UI)
@@ -44,10 +44,10 @@ def fitness_function(chromosome):
     total_wait = 0
     total_queue = 0
 
-    for i in range(len(flow_rate)):
-        green_effect = sum(chromosome) / (flow_rate[i] + 1)
+    for i in range(len(traffic_volume)):
+        green_effect = sum(chromosome) / (traffic_volume[i] + 1)
         wait = max(0, base_wait_time[i] - green_effect)
-        queue = max(0, vehicle_count[i] - green_effect)
+        queue = max(0, queue_length[i] - green_effect)
 
         total_wait += wait
         total_queue += queue
