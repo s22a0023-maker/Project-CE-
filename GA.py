@@ -16,9 +16,9 @@ data = load_data()
 
 # Assume dataset has:
 # traffic_volume, avg_wait_time, queue_length
-traffic_volume = data["traffic_volume"].values
-base_wait_time = data["avg_wait_time"].values
-queue_length = data["queue_length"].values
+traffic_volume = data["flow_rate"].values
+base_wait_time = data["waiting_time"].values
+queue_length = data["vehicle_count"].values
 
 # ==============================
 # GA PARAMETERS (Streamlit UI)
