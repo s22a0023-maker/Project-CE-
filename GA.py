@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 # ==============================
 @st.cache_data
 def load_data():
-    return pd.read_csv("/mnt/data/traffic_dataset.csv")
+    return pd.read_csv("traffic_dataset.csv")
 
 data = load_data()
 
