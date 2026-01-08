@@ -1,186 +1,149 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import random 
-import matplotlib.pyplot as plt
+import random
 import time
+import matplotlib.pyplot as plt
 
-# -------------------------------
-# Page Configuration
-# -------------------------------
-st.set_page_config(
-    page_title="Traffic Light Optimization (GA)",
-    layout="wide"
-)
-
-st.title("🚦 Traffic Light Optimization using Genetic Algorithm")
-st.write("Computational Evolution Case Study")
-
-# -------------------------------
+# ==============================
 # Load Dataset
-# -------------------------------
+# ==============================
 @st.cache_data
 def load_data():
     return pd.read_csv("traffic_dataset.csv")
 
-df = load_data()
+data = load_data()
 
-st.subheader("Traffic Dataset Preview")
-st.dataframe(df.head())
+# Assume dataset has:
+# flow_rate, waiting_time, vehicle_count
+flow_rate = data["flow_rate"].values
+base_wait_time = data["waiting_time"].values
+vehicle_count = data["vehicle_count"].values
 
-# -------------------------------
-# Sidebar Parameters
-# -------------------------------
-st.sidebar.header("GA Parameters")
+# ==============================
+# GA PARAMETERS (Streamlit UI)
+# ==============================
+st.title("🚦 Traffic Light Optimization using Genetic Algorithm")
 
-POP_SIZE = st.sidebar.slider("Population Size", 10, 100, 30)
-GENERATIONS = st.sidebar.slider("Generations", 10, 200, 50)
-MUTATION_RATE = st.sidebar.slider("Mutation Rate", 0.01, 0.5, 0.1)
+population_size = st.sidebar.slider("Population Size", 20, 200, 50)
+generations = st.sidebar.slider("Generations", 50, 500, 200)
+mutation_rate = st.sidebar.slider("Mutation Rate", 0.01, 0.5, 0.1)
+crossover_rate = st.sidebar.slider("Crossover Rate", 0.5, 1.0, 0.8)
+min_green = st.sidebar.slider("Min Green Time (s)", 5, 20, 10)
+max_green = st.sidebar.slider("Max Green Time (s)", 30, 90, 60)
 
-TRAFFIC_FLOW = st.sidebar.slider(
-    "Traffic Flow (vehicles/hour)", 
-    int(df["flow_rate"].min()), 
-    int(df["flow_rate"].max()), 
-    int(df["flow_rate"].mean())
-)
+num_phases = 4  # Example: 4-direction intersection
 
-QUEUE_LENGTH = st.sidebar.slider(
-    "Average Queue Length", 
-    int(df["lane_occupancy"].min()), 
-    int(df["lane_occupancy"].max()), 
-    int(df["lane_occupancy"].mean())
-)
+# ==============================
+# Fitness Function (Multi-objective)
+# ==============================
+def fitness_function(chromosome):
+    """
+    chromosome = [g1, g2, g3, g4]
+    """
+    total_wait = 0
+    total_queue = 0
 
-MODE = st.sidebar.radio(
-    "Optimization Mode",
-    ["Single Objective", "Multi Objective"]
-)
+    for i in range(len(flow_rate)):
+        green_effect = sum(chromosome) / (flow_rate[i] + 1)
+        wait = max(0, base_wait_time[i] - green_effect)
+        queue = max(0, vehicle_count[i] - green_effect)
 
-# -------------------------------
-# GA Functions
-# -------------------------------
-MIN_GREEN = 10
-MAX_GREEN = 60
+        total_wait += wait
+        total_queue += queue
 
-def initialize_population(size):
-    return [
-        [random.randint(MIN_GREEN, MAX_GREEN),
-         random.randint(MIN_GREEN, MAX_GREEN)]
-        for _ in range(size)
-    ]
+    # Weighted sum (multi-objective)
+    fitness = 0.7 * total_wait + 0.3 * total_queue
+    return fitness
 
-def single_objective_fitness(individual, flow_rate):
-    avg_wait = flow_rate / sum(individual)
-    return 1 / (1 + avg_wait)
+# ==============================
+# GA OPERATORS
+# ==============================
+def create_individual():
+    return [random.randint(min_green, max_green) for _ in range(num_phases)]
 
-def multi_objective_fitness(individual, flow_rate, lane_occupancy):
-    wait_score = 1 / (1 + (flow_rate / sum(individual)))
-    queue_score = 1 / (1 + lane_occupancy)
-    return 0.6 * wait_score + 0.4 * queue_score
+def create_population():
+    return [create_individual() for _ in range(population_size)]
 
-def selection(population, fitnesses):
-    return population[np.argmax(fitnesses)]
+def selection(population):
+    tournament = random.sample(population, 3)
+    tournament.sort(key=lambda x: fitness_function(x))
+    return tournament[0]
 
 def crossover(parent1, parent2):
-    point = random.randint(0, 1)
-    return parent1[:point] + parent2[point:]
+    if random.random() < crossover_rate:
+        point = random.randint(1, num_phases - 1)
+        return parent1[:point] + parent2[point:]
+    return parent1.copy()
 
-def mutation(individual, rate):
-    if random.random() < rate:
-        idx = random.randint(0, 1)
-        individual[idx] = random.randint(MIN_GREEN, MAX_GREEN)
+def mutation(individual):
+    for i in range(len(individual)):
+        if random.random() < mutation_rate:
+            individual[i] = random.randint(min_green, max_green)
     return individual
 
-# -------------------------------
-# GA Execution
-# -------------------------------
-def run_ga(mode):
-    population = initialize_population(POP_SIZE)
+# ==============================
+# GENETIC ALGORITHM
+# ==============================
+def genetic_algorithm():
+    population = create_population()
     best_fitness_history = []
-    best_solution = None
+    avg_fitness_history = []
 
     start_time = time.time()
 
-    for _ in range(GENERATIONS):
-        if mode == "Single Objective":
-            fitnesses = [
-                single_objective_fitness(ind, TRAFFIC_FLOW)
-                for ind in population
-            ]
-        else:
-            fitnesses = [
-                multi_objective_fitness(ind, TRAFFIC_FLOW, QUEUE_LENGTH)
-                for ind in population
-            ]
-
-        best_idx = np.argmax(fitnesses)
-        best_solution = population[best_idx]
-        best_fitness_history.append(fitnesses[best_idx])
-
+    for gen in range(generations):
         new_population = []
-        for _ in range(POP_SIZE):
-            parent1 = selection(population, fitnesses)
-            parent2 = random.choice(population)
-            child = crossover(parent1, parent2)
-            child = mutation(child, MUTATION_RATE)
+
+        fitness_values = [fitness_function(ind) for ind in population]
+        best_fitness_history.append(min(fitness_values))
+        avg_fitness_history.append(np.mean(fitness_values))
+
+        for _ in range(population_size):
+            p1 = selection(population)
+            p2 = selection(population)
+            child = crossover(p1, p2)
+            child = mutation(child)
             new_population.append(child)
 
         population = new_population
 
-    exec_time = time.time() - start_time
-    return best_solution, best_fitness_history, exec_time
+    end_time = time.time()
 
-# -------------------------------
-# Run Optimization
-# -------------------------------
-st.subheader("Optimization Results")
+    best_solution = min(population, key=lambda x: fitness_function(x))
+    return best_solution, best_fitness_history, avg_fitness_history, end_time - start_time
 
-if st.button("Run Genetic Algorithm"):
-    with st.spinner("Running Genetic Algorithm..."):
-        best_solution, fitness_history, exec_time = run_ga(MODE)
+# ==============================
+# RUN GA
+# ==============================
+if st.button("▶ Run Genetic Algorithm"):
+    best_solution, best_curve, avg_curve, exec_time = genetic_algorithm()
 
-    col1, col2 = st.columns(2)
+    st.subheader("✅ Best Optimized Traffic Signal Timings (seconds)")
+    st.write(best_solution)
 
-    with col1:
-        st.success("Best Traffic Light Timing Found")
-        st.write(f"🚦 Phase 1 Green Time: **{best_solution[0]} seconds**")
-        st.write(f"🚦 Phase 2 Green Time: **{best_solution[1]} seconds**")
-        st.write(f"⏱ Execution Time: **{exec_time:.4f} seconds**")
+    st.subheader("📉 Convergence Analysis")
+    fig, ax = plt.subplots()
+    ax.plot(best_curve, label="Best Fitness")
+    ax.plot(avg_curve, label="Average Fitness")
+    ax.set_xlabel("Generation")
+    ax.set_ylabel("Fitness Value")
+    ax.legend()
+    st.pyplot(fig)
 
-    with col2:
-        fig, ax = plt.subplots()
-        ax.plot(fitness_history)
-        ax.set_xlabel("Generation")
-        ax.set_ylabel("Fitness Value")
-        ax.set_title("GA Convergence Curve")
-        st.pyplot(fig)
+    st.subheader("⚙ Performance Metrics")
+    st.write(f"**Final Best Fitness:** {best_curve[-1]:.2f}")
+    st.write(f"**Execution Time:** {exec_time:.2f} seconds")
+    st.write(f"**Convergence Generation:** {np.argmin(best_curve)}")
 
-# -------------------------------
-# Performance Analysis Section
-# -------------------------------
-st.subheader("Performance Analysis")
-
+# ==============================
+# MULTI-OBJECTIVE INSIGHT
+# ==============================
+st.subheader("📊 Multi-objective Insight")
 st.markdown("""
-**Key Metrics Evaluated:**
-- **Convergence Rate:** Speed at which fitness stabilizes
-- **Accuracy:** Ability to reduce waiting time and congestion
-- **Computational Efficiency:** Execution time
+- **Objective 1:** Minimize total vehicle waiting time  
+- **Objective 2:** Minimize queue length  
+- **Method:** Weighted-sum GA (0.7 waiting, 0.3 queue)  
 
-**Observations:**
-- Rapid improvement during early generations
-- Stable convergence after sufficient iterations
-- Multi-objective optimization balances competing goals
+This demonstrates how GA balances competing traffic efficiency goals.
 """)
-
-# -------------------------------
-# Conclusion
-# -------------------------------
-st.subheader("Conclusion")
-
-st.markdown("""
-This Streamlit-based system demonstrates how **Genetic Algorithms** can be effectively applied to 
-traffic light optimization problems. The interactive dashboard allows users to explore parameter 
-effects, compare optimization strategies, and visualize convergence behavior in real time.
-""")
-
-st.success("✅ End of Computational Evolution Case Study")
