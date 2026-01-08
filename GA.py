@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import random
-import time
 import matplotlib.pyplot as plt
 
 # ==============================
@@ -14,136 +13,180 @@ def load_data():
 
 data = load_data()
 
-# Assume dataset has:
-# traffic_volume, avg_wait_time, queue_length
-traffic_volume = data["flow_rate"].values
-base_wait_time = data["waiting_time"].values
-queue_length = data["vehicle_count"].values
+flow_rate = data["flow_rate"].values
+base_wait = data["waiting_time"].values
+base_queue = data["vehicle_count"].values
 
 # ==============================
-# GA PARAMETERS (Streamlit UI)
+# Streamlit UI
 # ==============================
-st.title("🚦 Traffic Light Optimization using Genetic Algorithm")
+st.title("🚦 Traffic Light Optimization using NSGA-II")
 
-population_size = st.sidebar.slider("Population Size", 20, 200, 50)
+population_size = st.sidebar.slider("Population Size", 50, 300, 100)
 generations = st.sidebar.slider("Generations", 50, 500, 200)
 mutation_rate = st.sidebar.slider("Mutation Rate", 0.01, 0.5, 0.1)
-crossover_rate = st.sidebar.slider("Crossover Rate", 0.5, 1.0, 0.8)
 min_green = st.sidebar.slider("Min Green Time (s)", 5, 20, 10)
 max_green = st.sidebar.slider("Max Green Time (s)", 30, 90, 60)
 
-num_phases = 4  # Example: 4-direction intersection
+num_phases = 4
 
 # ==============================
-# Fitness Function (Multi-objective)
+# Objective Functions
 # ==============================
-def fitness_function(chromosome):
-    """
-    chromosome = [g1, g2, g3, g4]
-    """
+def evaluate(individual):
     total_wait = 0
     total_queue = 0
 
-    for i in range(len(traffic_volume)):
-        green_effect = sum(chromosome) / (traffic_volume[i] + 1)
-        wait = max(0, base_wait_time[i] - green_effect)
-        queue = max(0, queue_length[i] - green_effect)
+    green_effect = sum(individual)
 
+    for i in range(len(flow_rate)):
+        wait = max(0, base_wait[i] - green_effect / (flow_rate[i] + 1))
+        queue = max(0, base_queue[i] - green_effect / (flow_rate[i] + 1))
         total_wait += wait
         total_queue += queue
 
-    # Weighted sum (multi-objective)
-    fitness = 0.7 * total_wait + 0.3 * total_queue
-    return fitness
+    return total_wait, total_queue
 
 # ==============================
-# GA OPERATORS
+# NSGA-II Utilities
+# ==============================
+def dominates(a, b):
+    return all(x <= y for x, y in zip(a, b)) and any(x < y for x, y in zip(a, b))
+
+def fast_non_dominated_sort(pop, scores):
+    fronts = [[]]
+    domination_count = [0] * len(pop)
+    dominated = [[] for _ in pop]
+
+    for i in range(len(pop)):
+        for j in range(len(pop)):
+            if dominates(scores[i], scores[j]):
+                dominated[i].append(j)
+            elif dominates(scores[j], scores[i]):
+                domination_count[i] += 1
+        if domination_count[i] == 0:
+            fronts[0].append(i)
+
+    f = 0
+    while fronts[f]:
+        next_front = []
+        for i in fronts[f]:
+            for j in dominated[i]:
+                domination_count[j] -= 1
+                if domination_count[j] == 0:
+                    next_front.append(j)
+        f += 1
+        fronts.append(next_front)
+
+    return fronts[:-1]
+
+def crowding_distance(front, scores):
+    distance = [0] * len(front)
+    for m in range(2):
+        sorted_idx = sorted(range(len(front)), key=lambda i: scores[front[i]][m])
+        distance[sorted_idx[0]] = distance[sorted_idx[-1]] = float("inf")
+        min_val = scores[front[sorted_idx[0]]][m]
+        max_val = scores[front[sorted_idx[-1]]][m]
+        if max_val - min_val == 0:
+            continue
+        for i in range(1, len(front) - 1):
+            distance[sorted_idx[i]] += (
+                scores[front[sorted_idx[i + 1]]][m]
+                - scores[front[sorted_idx[i - 1]]][m]
+            ) / (max_val - min_val)
+    return distance
+
+# ==============================
+# Genetic Operators
 # ==============================
 def create_individual():
     return [random.randint(min_green, max_green) for _ in range(num_phases)]
 
-def create_population():
-    return [create_individual() for _ in range(population_size)]
+def crossover(p1, p2):
+    point = random.randint(1, num_phases - 1)
+    return p1[:point] + p2[point:]
 
-def selection(population):
-    tournament = random.sample(population, 3)
-    tournament.sort(key=lambda x: fitness_function(x))
-    return tournament[0]
-
-def crossover(parent1, parent2):
-    if random.random() < crossover_rate:
-        point = random.randint(1, num_phases - 1)
-        return parent1[:point] + parent2[point:]
-    return parent1.copy()
-
-def mutation(individual):
-    for i in range(len(individual)):
+def mutation(ind):
+    for i in range(len(ind)):
         if random.random() < mutation_rate:
-            individual[i] = random.randint(min_green, max_green)
-    return individual
+            ind[i] = random.randint(min_green, max_green)
+    return ind
 
 # ==============================
-# GENETIC ALGORITHM
+# NSGA-II Algorithm
 # ==============================
-def genetic_algorithm():
-    population = create_population()
-    best_fitness_history = []
-    avg_fitness_history = []
-
-    start_time = time.time()
+def nsga2():
+    population = [create_individual() for _ in range(population_size)]
 
     for gen in range(generations):
-        new_population = []
-
-        fitness_values = [fitness_function(ind) for ind in population]
-        best_fitness_history.append(min(fitness_values))
-        avg_fitness_history.append(np.mean(fitness_values))
-
-        for _ in range(population_size):
-            p1 = selection(population)
-            p2 = selection(population)
+        offspring = []
+        while len(offspring) < population_size:
+            p1, p2 = random.sample(population, 2)
             child = crossover(p1, p2)
             child = mutation(child)
-            new_population.append(child)
+            offspring.append(child)
+
+        combined = population + offspring
+        scores = [evaluate(ind) for ind in combined]
+
+        fronts = fast_non_dominated_sort(combined, scores)
+        new_population = []
+
+        for front in fronts:
+            if len(new_population) + len(front) > population_size:
+                distances = crowding_distance(front, scores)
+                sorted_front = sorted(
+                    range(len(front)),
+                    key=lambda i: distances[i],
+                    reverse=True,
+                )
+                for i in sorted_front:
+                    if len(new_population) < population_size:
+                        new_population.append(combined[front[i]])
+                break
+            else:
+                new_population.extend([combined[i] for i in front])
 
         population = new_population
 
-    end_time = time.time()
+    final_scores = [evaluate(ind) for ind in population]
+    pareto_front = fast_non_dominated_sort(population, final_scores)[0]
 
-    best_solution = min(population, key=lambda x: fitness_function(x))
-    return best_solution, best_fitness_history, avg_fitness_history, end_time - start_time
+    return population, final_scores, pareto_front
 
 # ==============================
-# RUN GA
+# Run NSGA-II
 # ==============================
-if st.button("▶ Run Genetic Algorithm"):
-    best_solution, best_curve, avg_curve, exec_time = genetic_algorithm()
+if st.button("▶ Run NSGA-II Optimization"):
+    population, scores, pareto_front = nsga2()
 
-    st.subheader("✅ Best Optimized Traffic Signal Timings (seconds)")
-    st.write(best_solution)
+    st.subheader("🏆 Pareto-Optimal Traffic Signal Solutions")
 
-    st.subheader("📉 Convergence Analysis")
+    pareto_wait = [scores[i][0] for i in pareto_front]
+    pareto_queue = [scores[i][1] for i in pareto_front]
+
     fig, ax = plt.subplots()
-    ax.plot(best_curve, label="Best Fitness")
-    ax.plot(avg_curve, label="Average Fitness")
-    ax.set_xlabel("Generation")
-    ax.set_ylabel("Fitness Value")
+    ax.scatter(
+        [s[0] for s in scores],
+        [s[1] for s in scores],
+        alpha=0.3,
+        label="Population"
+    )
+    ax.scatter(
+        pareto_wait,
+        pareto_queue,
+        color="red",
+        label="Pareto Front"
+    )
+    ax.set_xlabel("Total Waiting Time")
+    ax.set_ylabel("Total Queue Length")
     ax.legend()
     st.pyplot(fig)
 
-    st.subheader("⚙ Performance Metrics")
-    st.write(f"**Final Best Fitness:** {best_curve[-1]:.2f}")
-    st.write(f"**Execution Time:** {exec_time:.2f} seconds")
-    st.write(f"**Convergence Generation:** {np.argmin(best_curve)}")
-
-# ==============================
-# MULTI-OBJECTIVE INSIGHT
-# ==============================
-st.subheader("📊 Multi-objective Insight")
-st.markdown("""
-- **Objective 1:** Minimize total vehicle waiting time  
-- **Objective 2:** Minimize queue length  
-- **Method:** Weighted-sum GA (0.7 waiting, 0.3 queue)  
-
-This demonstrates how GA balances competing traffic efficiency goals.
-""")
+    st.subheader("🔍 Sample Pareto-Optimal Green Times")
+    for idx in pareto_front[:5]:
+        st.write(
+            f"Green Times: {population[idx]} | "
+            f"Waiting: {scores[idx][0]:.2f} | "
+            f"Queue: {scores[idx][1]:.2f}"
+        )
