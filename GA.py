@@ -94,51 +94,80 @@ def fitness_function(chromosome):
 # SECTION 3.3: GA OPERATORS
 # ==============================
 
+# ==============================
+# OPTIMIZED GA OPERATORS
+# ==============================
+
 def create_individual():
-    return [random.randint(min_green, max_green) for _ in range(num_phases)]
+    return np.random.randint(min_green, max_green + 1, size=num_phases)
 
 def create_population():
     return [create_individual() for _ in range(population_size)]
 
-def selection(population):
-    tournament = random.sample(population, 3)
-    tournament.sort(key=lambda ind: fitness_function(ind))
-    return tournament[0]
+def selection(population, fitness_values):
+    idx = np.random.choice(len(population), 3, replace=False)
+    best_idx = idx[np.argmin([fitness_values[i] for i in idx])]
+    return population[best_idx].copy()
 
 def crossover(parent1, parent2):
     if random.random() < crossover_rate:
         point = random.randint(1, num_phases - 1)
-        return parent1[:point] + parent2[point:]
+        child = np.concatenate((parent1[:point], parent2[point:]))
+        return child
     return parent1.copy()
 
 def mutation(individual):
-    for i in range(len(individual)):
-        if random.random() < mutation_rate:
-            individual[i] = random.randint(min_green, max_green)
+    mutation_mask = np.random.rand(num_phases) < mutation_rate
+    individual[mutation_mask] = np.random.randint(
+        min_green, max_green + 1, np.sum(mutation_mask)
+    )
     return individual
-
 
 # ==============================
 # SECTION 3.4: GENETIC ALGORITHM
 # ==============================
 
+# ==============================
+# FAST GENETIC ALGORITHM
+# ==============================
+
 def genetic_algorithm():
     population = create_population()
+
     best_fitness_history = []
     avg_fitness_history = []
 
     start_time = time.time()
+    stagnation_counter = 0
+    best_overall = float("inf")
 
     for gen in range(generations):
-        fitness_values = [fitness_function(ind) for ind in population]
+        # Calculate fitness ONCE per generation
+        fitness_values = np.array([fitness_function(ind) for ind in population])
 
-        best_fitness_history.append(min(fitness_values))
+        best_idx = np.argmin(fitness_values)
+        best_fitness = fitness_values[best_idx]
+
+        best_fitness_history.append(best_fitness)
         avg_fitness_history.append(np.mean(fitness_values))
 
-        new_population = []
-        for _ in range(population_size):
-            p1 = selection(population)
-            p2 = selection(population)
+        # Early stopping
+        if best_fitness < best_overall:
+            best_overall = best_fitness
+            stagnation_counter = 0
+        else:
+            stagnation_counter += 1
+
+        if stagnation_counter >= 30:
+            st.info(f"Early stopping at generation {gen}")
+            break
+
+        # Elitism: keep best individual
+        new_population = [population[best_idx].copy()]
+
+        while len(new_population) < population_size:
+            p1 = selection(population, fitness_values)
+            p2 = selection(population, fitness_values)
             child = crossover(p1, p2)
             child = mutation(child)
             new_population.append(child)
@@ -147,10 +176,8 @@ def genetic_algorithm():
 
     end_time = time.time()
 
-    best_solution = min(population, key=lambda ind: fitness_function(ind))
-
+    best_solution = population[0]
     return best_solution, best_fitness_history, avg_fitness_history, end_time - start_time
-
 
 # ==============================
 # SECTION 4: PERFORMANCE ANALYSIS
