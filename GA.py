@@ -1,241 +1,212 @@
-# ==============================
-# SECTION 1: CASE STUDY SELECTION
-# ==============================
-
-"""
-Traffic Light Optimization Problem
-
-Goal:
-Optimize traffic signal green times to reduce traffic congestion.
-
-Decision Variables:
-- Green time for each traffic phase (seconds)
-
-Constraints:
-- Minimum green time
-- Maximum green time
-
-Objectives:
-- Minimize vehicle waiting time
-- Minimize queue length
-"""
-
 import streamlit as st
 import pandas as pd
 import numpy as np
-import random
-import time
+import random 
 import matplotlib.pyplot as plt
+import time
 
+# -------------------------------
+# Page Configuration
+# -------------------------------
+st.set_page_config(
+    page_title="Traffic Light Optimization (GA)",
+    layout="wide"
+)
 
-# ==============================
-# SECTION 2: DATASET LOADING
-# ==============================
+st.title("🚦 Traffic Light Optimization using Genetic Algorithm")
+st.write("Computational Evolution Case Study")
 
+# -------------------------------
+# Load Dataset
+# -------------------------------
 @st.cache_data
 def load_data():
     return pd.read_csv("traffic_dataset.csv")
 
-data = load_data()
+df = load_data()
 
-# Required dataset columns
-flow_rate = data["flow_rate"].values
-waiting_time = data["waiting_time"].values
-vehicle_count = data["vehicle_count"].values
+st.subheader("Traffic Dataset Preview")
+st.dataframe(df.head())
 
-st.title("🚦 Traffic Light Optimization using Genetic Algorithm")
-st.subheader("Dataset Preview")
-st.dataframe(data.head())
-
-
-# ==============================
-# SECTION 3.1: GA PARAMETERS
-# ==============================
-
+# -------------------------------
+# Sidebar Parameters
+# -------------------------------
 st.sidebar.header("GA Parameters")
 
-population_size = st.sidebar.slider("Population Size", 20, 200, 50)
-generations = st.sidebar.slider("Number of Generations", 50, 500, 200)
-mutation_rate = st.sidebar.slider("Mutation Rate", 0.01, 0.5, 0.1)
-crossover_rate = st.sidebar.slider("Crossover Rate", 0.5, 1.0, 0.8)
+POP_SIZE = st.sidebar.slider("Population Size", 10, 100, 30)
+GENERATIONS = st.sidebar.slider("Generations", 10, 200, 50)
+MUTATION_RATE = st.sidebar.slider("Mutation Rate", 0.01, 0.5, 0.1)
+ELITISM_RATE = st.sidebar.slider("Elitism Rate (%)", 0, 30, 10)
+TOURNAMENT_SIZE = st.sidebar.slider("Tournament Size", 2, 5, 3)
 
-min_green = st.sidebar.slider("Min Green Time (sec)", 5, 20, 10)
-max_green = st.sidebar.slider("Max Green Time (sec)", 30, 90, 60)
 
-num_phases = 4  # Four-way intersection
+TRAFFIC_FLOW = st.sidebar.slider(
+    "Traffic Flow (vehicles/hour)", 
+    int(df["flow_rate"].min()), 
+    int(df["flow_rate"].max()), 
+    int(df["flow_rate"].mean())
+)
 
-# ==============================
-# SECTION 3.2: FITNESS FUNCTION
-# ==============================
+QUEUE_LENGTH = st.sidebar.slider(
+    "Average Queue Length", 
+    int(df["vehicle_count"].min()), 
+    int(df["vehicle_count"].max()), 
+    int(df["vehicle_count"].mean())
+)
 
-def fitness_function(chromosome):
-    """
-    Multi-objective fitness (weighted sum):
-    - Waiting time minimization
-    - Queue length minimization
-    """
-    total_wait = 0
-    total_queue = 0
+MODE = st.sidebar.radio(
+    "Optimization Mode",
+    ["Single Objective", "Multi Objective"]
+)
 
-    for i in range(len(flow_rate)):
-        green_effect = sum(chromosome) / (flow_rate[i] + 1)
+# -------------------------------
+# GA Functions
+# -------------------------------
+MIN_GREEN = 10
+MAX_GREEN = 60
 
-        wait = max(0, waiting_time[i] - green_effect)
-        queue = max(0, vehicle_count[i] - green_effect)
+def initialize_population(size):
+    return [
+        [random.randint(MIN_GREEN, MAX_GREEN),
+         random.randint(MIN_GREEN, MAX_GREEN)]
+        for _ in range(size)
+    ]
 
-        total_wait += wait
-        total_queue += queue
+def single_objective_fitness(individual, flow_rate):
+    avg_wait = flow_rate / sum(individual)
+    return 1 / (1 + avg_wait)
 
-    # Weighted multi-objective fitness
-    fitness = 0.7 * total_wait + 0.3 * total_queue
-    return fitness
+def multi_objective_fitness(individual, flow_rate, vehicle_count):
+    wait_score = 1 / (1 + (flow_rate / sum(individual)))
+    queue_score = 1 / (1 + vehicle_count)
+    return 0.6 * wait_score + 0.4 * queue_score
 
-# ==============================
-# SECTION 3.3: GA OPERATORS
-# ==============================
-
-# ==============================
-# OPTIMIZED GA OPERATORS
-# ==============================
-
-def create_individual():
-    return np.random.randint(min_green, max_green + 1, size=num_phases)
-
-def create_population():
-    return [create_individual() for _ in range(population_size)]
-
-def selection(population, fitness_values):
-    idx = np.random.choice(len(population), 3, replace=False)
-    best_idx = idx[np.argmin([fitness_values[i] for i in idx])]
-    return population[best_idx].copy()
+def tournament_selection(population, fitnesses, k=3):
+    selected = random.sample(list(zip(population, fitnesses)), k)
+    selected.sort(key=lambda x: x[1], reverse=True)
+    return selected[0][0]
 
 def crossover(parent1, parent2):
-    if random.random() < crossover_rate:
-        point = random.randint(1, num_phases - 1)
-        child = np.concatenate((parent1[:point], parent2[point:]))
-        return child
-    return parent1.copy()
+    child = []
+    for g1, g2 in zip(parent1, parent2):
+        child.append(g1 if random.random() < 0.5 else g2)
+    return child
 
-def mutation(individual):
-    mutation_mask = np.random.rand(num_phases) < mutation_rate
-    individual[mutation_mask] = np.random.randint(
-        min_green, max_green + 1, np.sum(mutation_mask)
-    )
+
+def mutation(individual, rate):
+    for i in range(len(individual)):
+        if random.random() < rate:
+            individual[i] += random.randint(-5, 5)
+            individual[i] = np.clip(individual[i], MIN_GREEN, MAX_GREEN)
     return individual
 
-# ==============================
-# SECTION 3.4: GENETIC ALGORITHM
-# ==============================
 
-# ==============================
-# FAST GENETIC ALGORITHM
-# ==============================
-
-def genetic_algorithm():
-    population = create_population()
-
+# -------------------------------
+# GA Execution
+# -------------------------------
+def run_ga(mode):
+    population = initialize_population(POP_SIZE)
     best_fitness_history = []
-    avg_fitness_history = []
+
+    elite_count = int((ELITISM_RATE / 100) * POP_SIZE)
 
     start_time = time.time()
-    stagnation_counter = 0
-    best_overall = float("inf")
 
-    for gen in range(generations):
-        # Calculate fitness ONCE per generation
-        fitness_values = np.array([fitness_function(ind) for ind in population])
+    for _ in range(GENERATIONS):
 
-        best_idx = np.argmin(fitness_values)
-        best_fitness = fitness_values[best_idx]
-
-        best_fitness_history.append(best_fitness)
-        avg_fitness_history.append(np.mean(fitness_values))
-
-        # Early stopping
-        if best_fitness < best_overall:
-            best_overall = best_fitness
-            stagnation_counter = 0
+        # Fitness evaluation
+        if mode == "Single Objective":
+            fitnesses = [
+                single_objective_fitness(ind, TRAFFIC_FLOW)
+                for ind in population
+            ]
         else:
-            stagnation_counter += 1
+            fitnesses = [
+                multi_objective_fitness(ind, TRAFFIC_FLOW, QUEUE_LENGTH)
+                for ind in population
+            ]
 
-        if stagnation_counter >= 30:
-            st.info(f"Early stopping at generation {gen}")
-            break
+        # Sort population by fitness
+        sorted_population = [
+            x for _, x in sorted(
+                zip(fitnesses, population),
+                key=lambda pair: pair[0],
+                reverse=True
+            )
+        ]
 
-        # Elitism: keep best individual
-        new_population = [population[best_idx].copy()]
+        # Save best fitness
+        best_fitness_history.append(max(fitnesses))
+        best_solution = sorted_population[0]
 
-        while len(new_population) < population_size:
-            p1 = selection(population, fitness_values)
-            p2 = selection(population, fitness_values)
-            child = crossover(p1, p2)
-            child = mutation(child)
+        # -------- ELITISM --------
+        new_population = sorted_population[:elite_count]
+
+        # -------- GENERATE OFFSPRING --------
+        while len(new_population) < POP_SIZE:
+            parent1 = tournament_selection(population, fitnesses, TOURNAMENT_SIZE)
+            parent2 = tournament_selection(population, fitnesses, TOURNAMENT_SIZE)
+            child = crossover(parent1, parent2)
+            child = mutation(child, MUTATION_RATE)
             new_population.append(child)
 
         population = new_population
 
-    end_time = time.time()
-
-    best_solution = population[0]
-    return best_solution, best_fitness_history, avg_fitness_history, end_time - start_time
-
-# ==============================
-# SECTION 4: PERFORMANCE ANALYSIS
-# ==============================
-
-if st.button("▶ Run Genetic Algorithm"):
-    best_solution, best_curve, avg_curve, exec_time = genetic_algorithm()
-
-    st.subheader("Best Traffic Signal Timings (seconds)")
-    st.write(best_solution)
-
-    st.subheader("Convergence Analysis")
-    fig, ax = plt.subplots()
-    ax.plot(best_curve, label="Best Fitness")
-    ax.plot(avg_curve, label="Average Fitness")
-    ax.set_xlabel("Generation")
-    ax.set_ylabel("Fitness Value")
-    ax.legend()
-    st.pyplot(fig)
-
-    st.subheader("Performance Metrics")
-    st.write(f"Final Best Fitness: {best_curve[-1]:.2f}")
-    st.write(f"Execution Time: {exec_time:.2f} seconds")
-    st.write(f"Convergence Generation: {np.argmin(best_curve)}")
+    exec_time = time.time() - start_time
+    return best_solution, best_fitness_history, exec_time
 
 
-# ==============================
-# SECTION 5: EXTENDED ANALYSIS
-# ==============================
+# -------------------------------
+# Run Optimization
+# -------------------------------
+st.subheader("Optimization Results")
 
-st.subheader("Multi-Objective Optimization Analysis")
+if st.button("Run Genetic Algorithm"):
+    with st.spinner("Running Genetic Algorithm..."):
+        best_solution, fitness_history, exec_time = run_ga(MODE)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.success("Best Traffic Light Timing Found")
+        st.write(f"🚦 Phase 1 Green Time: **{best_solution[0]} seconds**")
+        st.write(f"🚦 Phase 2 Green Time: **{best_solution[1]} seconds**")
+        st.write(f"⏱ Execution Time: **{exec_time:.4f} seconds**")
+
+    with col2:
+        fig, ax = plt.subplots()
+        ax.plot(fitness_history)
+        ax.set_xlabel("Generation")
+        ax.set_ylabel("Fitness Value")
+        ax.set_title("GA Convergence Curve")
+        st.pyplot(fig)
+
+# -------------------------------
+# Performance Analysis Section
+# -------------------------------
+st.subheader("Performance Analysis")
 
 st.markdown("""
-**Objectives Considered:**
-- Minimize average vehicle waiting time
-- Minimize queue length
+**Key Metrics Evaluated:**
+- **Convergence Rate:** Speed at which fitness stabilizes
+- **Accuracy:** Ability to reduce waiting time and congestion
+- **Computational Efficiency:** Execution time
 
-**Approach Used:**
-- Weighted-sum multi-objective Genetic Algorithm
-- Waiting time weight = 0.7
-- Queue length weight = 0.3
-
-**Impact:**
-- Improves traffic flow efficiency
-- Balances congestion reduction and fairness across lanes
+**Observations:**
+- Rapid improvement during early generations
+- Stable convergence after sufficient iterations
+- Multi-objective optimization balances competing goals
 """)
 
-
-# ==============================
-# SECTION 6: STREAMLIT FEATURES
-# ==============================
+# -------------------------------
+# Conclusion
+# -------------------------------
+st.subheader("Conclusion")
 
 st.markdown("""
-### Streamlit Dashboard Capabilities
-- Interactive GA parameter tuning
-- Dataset visualization
-- Real-time convergence curves
-- Performance metric reporting
-- Multi-objective trade-off explanation
+This Streamlit-based system demonstrates how **Genetic Algorithms** can be effectively applied to 
+traffic light optimization problems. The interactive dashboard allows users to explore parameter 
+effects, compare optimization strategies, and visualize convergence behavior in real time.
 """)
 
+st.success("✅ End of Computational Evolution Case Study")
