@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import time
 
 # ===============================
-# PAGE CONFIG
+# PAGE CONFIGURATION
 # ===============================
 st.set_page_config(
     page_title="Traffic Light Optimization (GA)",
@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 st.title("🚦 Traffic Light Optimization using Genetic Algorithm")
-st.write("Computational Evolution Case Study – Realistic GA Implementation")
+st.write("Computational Evolution Case Study – Single & Multi Objective GA")
 
 # ===============================
 # LOAD DATA
@@ -38,17 +38,22 @@ GENERATIONS = st.sidebar.slider("Generations", 20, 200, 80)
 MUTATION_RATE = st.sidebar.slider("Mutation Rate", 0.01, 0.3, 0.08)
 
 TRAFFIC_FLOW = st.sidebar.slider(
-    "Traffic Flow (vehicles/hour)",
+    "Direction 1 Flow (veh/hour)",
     int(df["flow_rate"].min()),
     int(df["flow_rate"].max()),
     int(df["flow_rate"].mean())
 )
 
 QUEUE_LENGTH = st.sidebar.slider(
-    "Opposite Direction Flow (vehicles/hour)",
+    "Direction 2 Flow (veh/hour)",
     int(df["vehicle_count"].min()),
     int(df["vehicle_count"].max()),
     int(df["vehicle_count"].mean())
+)
+
+MODE = st.sidebar.radio(
+    "Optimization Mode",
+    ["Single Objective", "Multi Objective"]
 )
 
 # ===============================
@@ -87,9 +92,12 @@ def average_delay(flow, green, cycle):
     return delay
 
 # ===============================
-# FITNESS FUNCTION
+# FITNESS FUNCTIONS
 # ===============================
-def fitness(individual):
+def single_objective_fitness(individual):
+    """
+    Objective: Minimize total delay
+    """
     cycle, ratio = individual
     green_1 = cycle * ratio
     green_2 = cycle * (1 - ratio)
@@ -99,6 +107,31 @@ def fitness(individual):
 
     total_delay = delay_1 + delay_2
     return 1 / (1 + total_delay)
+
+
+def multi_objective_fitness(individual):
+    """
+    Objectives:
+    1. Minimize total delay
+    2. Balance green time allocation (fairness)
+    """
+    cycle, ratio = individual
+    green_1 = cycle * ratio
+    green_2 = cycle * (1 - ratio)
+
+    delay_1 = average_delay(TRAFFIC_FLOW, green_1, cycle)
+    delay_2 = average_delay(QUEUE_LENGTH, green_2, cycle)
+
+    total_delay = delay_1 + delay_2
+
+    # Fairness objective (penalize imbalance)
+    balance_penalty = abs(green_1 - green_2)
+
+    delay_score = 1 / (1 + total_delay)
+    balance_score = 1 / (1 + balance_penalty)
+
+    # Weighted sum approach
+    return 0.7 * delay_score + 0.3 * balance_score
 
 # ===============================
 # TOURNAMENT SELECTION
@@ -133,14 +166,17 @@ def mutation(individual):
 # ===============================
 # GA EXECUTION
 # ===============================
-def run_ga():
+def run_ga(mode):
     population = initialize_population(POP_SIZE)
     fitness_history = []
 
     start_time = time.time()
 
     for _ in range(GENERATIONS):
-        fitnesses = [fitness(ind) for ind in population]
+        if mode == "Single Objective":
+            fitnesses = [single_objective_fitness(ind) for ind in population]
+        else:
+            fitnesses = [multi_objective_fitness(ind) for ind in population]
 
         # Elitism
         elite_idx = np.argmax(fitnesses)
@@ -167,8 +203,8 @@ def run_ga():
 st.subheader("Optimization Results")
 
 if st.button("Run Genetic Algorithm"):
-    with st.spinner("Optimizing traffic signal timings..."):
-        best_solution, fitness_history, exec_time = run_ga()
+    with st.spinner("Optimizing traffic signals..."):
+        best_solution, fitness_history, exec_time = run_ga(MODE)
 
     cycle, ratio = best_solution
     green_1 = int(cycle * ratio)
@@ -177,10 +213,10 @@ if st.button("Run Genetic Algorithm"):
     col1, col2 = st.columns(2)
 
     with col1:
-        st.success("Optimal Traffic Signal Timing")
+        st.success(f"Best Solution ({MODE})")
         st.write(f"🚦 Cycle Length: **{cycle} seconds**")
-        st.write(f"🚦 Phase 1 Green: **{green_1} seconds**")
-        st.write(f"🚦 Phase 2 Green: **{green_2} seconds**")
+        st.write(f"🚦 Phase 1 Green Time: **{green_1} seconds**")
+        st.write(f"🚦 Phase 2 Green Time: **{green_2} seconds**")
         st.write(f"⏱ Execution Time: **{exec_time:.4f} seconds**")
 
     with col2:
@@ -197,15 +233,18 @@ if st.button("Run Genetic Algorithm"):
 st.subheader("Performance Analysis")
 
 st.markdown("""
-**Performance Metrics:**
-- Convergence speed across generations  
-- Reduction in total vehicle delay  
-- Computational efficiency  
+**Single Objective Optimization**
+- Focuses solely on minimizing total vehicle delay
+- Produces aggressive green-time allocations
 
-**Findings:**
-- GA rapidly improves signal timing in early generations  
-- Elitism ensures stable convergence  
-- Optimized green splits reduce congestion effectively  
+**Multi Objective Optimization**
+- Balances delay reduction and fairness
+- Produces more stable and realistic signal timings
+
+**GA Characteristics**
+- Fast convergence in early generations
+- Stable results due to elitism
+- Suitable for real-time experimentation
 """)
 
 # ===============================
@@ -214,10 +253,11 @@ st.markdown("""
 st.subheader("Conclusion")
 
 st.markdown("""
-This study demonstrates the effectiveness of **Genetic Algorithms** in optimizing 
-traffic signal timings under varying traffic conditions. The model integrates 
-realistic delay estimation and evolutionary operators, making it suitable for 
-real-world traffic control simulations and academic evaluation.
+This implementation demonstrates how **Genetic Algorithms** can solve 
+traffic signal optimization problems using both **single-objective** and 
+**multi-objective** formulations. The system allows comparative evaluation 
+of optimization strategies, supporting decision-making in intelligent 
+traffic control systems.
 """)
 
 st.success("✅ End of Computational Evolution Case Study")
