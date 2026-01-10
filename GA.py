@@ -59,14 +59,24 @@ with col2:
     queue_col = st.selectbox(
         "Select Queue / Vehicle Count Column",
         numeric_columns,
-        index=1
+        index=1 if len(numeric_columns) > 1 else 0
     )
 
-clean_df = df[[flow_col, queue_col]].dropna().astype(float)
+# Clean dataset
+clean_df = df[[flow_col, queue_col]].copy()
+clean_df = clean_df.dropna()
+clean_df = clean_df.astype(float)
+
 clean_df.columns = ["flow_rate", "vehicle_count"]
 
 st.subheader("Cleaned Dataset (GA Input)")
 st.dataframe(clean_df.head())
+
+st.info(
+    f"Cleaned data contains {len(clean_df)} rows "
+    "and is ready for Genetic Algorithm optimization."
+)
+
 
 # --------------------------------------------------
 # Sidebar GA Parameters
