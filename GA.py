@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 import time
 
 # --------------------------------------------------
@@ -219,19 +220,48 @@ if st.button("Run Genetic Algorithm"):
         st.metric("Execution Time (seconds)", f"{exec_time:.4f}")
 
     with col2:
-        fig1, ax1 = plt.subplots()
-        ax1.plot(fitness_hist)
-        ax1.set_title("GA Convergence Curve")
-        ax1.set_xlabel("Generation")
-        ax1.set_ylabel("Fitness Value")
-        st.pyplot(fig1)
+        fig1 = go.Figure()
+        
+        fig1.add_trace(
+            go.Scatter(
+                y=fitness_hist,
+                mode="lines+markers",
+                name="Best Fitness",
+                hovertemplate="Generation: %{x}<br>Fitness: %{y:.4f}"
+            )
+        )
+    
+        fig1.update_layout(
+            title="GA Convergence Curve",
+            xaxis_title="Generation",
+            yaxis_title="Fitness Value",
+            hovermode="x unified"
+        )
+    
+        st.plotly_chart(fig1, use_container_width=True)
+
 
     st.subheader("Optimized Traffic Light Green Time Distribution")
 
-    fig2, ax2 = plt.subplots()
-    ax2.bar(["Phase 1", "Phase 2"], best_sol)
-    ax2.set_ylabel("Green Time (seconds)")
-    ax2.set_title("Optimized Green Signal Timing")
-    st.pyplot(fig2)
+    fig2 = go.Figure()
+    
+    fig2.add_trace(
+        go.Bar(
+            x=["Phase 1", "Phase 2"],
+            y=best_sol,
+            text=best_sol,
+            textposition="auto",
+            hovertemplate="Phase: %{x}<br>Green Time: %{y} seconds"
+        )
+    )
+    
+    fig2.update_layout(
+        title="Optimized Traffic Light Green Time Distribution",
+        xaxis_title="Traffic Signal Phase",
+        yaxis_title="Green Time (seconds)"
+    )
+    
+    st.plotly_chart(fig2, use_container_width=True)
+
 
 st.success("✅ Genetic Algorithm Optimization Completed Successfully")
