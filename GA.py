@@ -17,16 +17,70 @@ st.title("🚦 Traffic Light Optimization using Genetic Algorithm")
 st.caption("JIE42903 – Evolutionary Computing")
 
 # --------------------------------------------------
-# Dataset
+# Upload Dataset
 # --------------------------------------------------
-@st.cache_data
-def load_data():
-    return pd.read_csv("traffic_dataset.csv")
+st.subheader("Upload Traffic Dataset")
 
-df = load_data()
+uploaded_file = st.file_uploader(
+    "Upload CSV file (Traffic Data)",
+    type=["csv"]
+)
 
-st.subheader("Traffic Dataset Preview")
-st.dataframe(df.head())
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
+
+    st.success("Dataset uploaded successfully")
+
+    st.subheader("Raw Dataset Preview")
+    st.dataframe(df.head())
+else:
+    st.warning("Please upload a CSV file to proceed.")
+    st.stop()
+
+
+# --------------------------------------------------
+# Data Cleaning & Feature Selection
+# --------------------------------------------------
+st.subheader("Data Cleaning & Feature Selection")
+
+numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+
+if len(numeric_columns) < 2:
+    st.error("Dataset must contain at least two numeric columns.")
+    st.stop()
+
+col1, col2 = st.columns(2)
+
+with col1:
+    flow_col = st.selectbox(
+        "Select Traffic Flow Column (vehicles/hour)",
+        numeric_columns
+    )
+
+with col2:
+    queue_col = st.selectbox(
+        "Select Queue / Vehicle Count Column",
+        numeric_columns,
+        index=1 if len(numeric_columns) > 1 else 0
+    )
+
+# Clean dataset
+clean_df = df[[flow_col, queue_col]].copy()
+clean_df = clean_df.dropna()
+clean_df = clean_df.astype(float)
+
+clean_df.columns = ["flow_rate", "vehicle_count"]
+
+st.subheader("Cleaned Dataset (GA Input)")
+st.dataframe(clean_df.head())
+
+st.info(
+    f"Cleaned data contains {len(clean_df)} rows "
+    "and is ready for Genetic Algorithm optimization."
+)
+
+
+
 
 # --------------------------------------------------
 # Sidebar Controls
@@ -39,16 +93,16 @@ MUTATION_RATE = st.sidebar.slider("Mutation Rate", 0.01, 0.3, 0.1)
 
 TRAFFIC_FLOW = st.sidebar.slider(
     "Traffic Flow (vehicles/hour)",
-    int(df["flow_rate"].min()),
-    int(df["flow_rate"].max()),
-    int(df["flow_rate"].mean())
+    int(clean_df["flow_rate"].min()),
+    int(clean_df["flow_rate"].max()),
+    int(clean_df["flow_rate"].mean())
 )
 
 QUEUE_LENGTH = st.sidebar.slider(
     "Average Queue Length",
-    int(df["vehicle_count"].min()),
-    int(df["vehicle_count"].max()),
-    int(df["vehicle_count"].mean())
+    int(clean_df["vehicle_count"].min()),
+    int(clean_df["vehicle_count"].max()),
+    int(clean_df["vehicle_count"].mean())
 )
 
 MODE = st.sidebar.radio(
