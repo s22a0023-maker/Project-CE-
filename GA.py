@@ -128,13 +128,17 @@ def initialize_population(size):
     ]
 
 def single_objective_fitness(individual, flow):
-    waiting_time = flow / sum(individual)
+    total_green = max(sum(individual), 1)
+    waiting_time = flow / total_green
     return 1 / (1 + waiting_time)
 
+
 def multi_objective_fitness(individual, flow, queue, w1, w2):
-    wait_score = 1 / (1 + (flow / sum(individual)))
+    total_green = max(sum(individual), 1)
+    wait_score = 1 / (1 + (flow / total_green))
     queue_score = 1 / (1 + queue)
     return w1 * wait_score + w2 * queue_score
+
 
 def tournament_selection(pop, fitness, k=5):
     selected = random.sample(list(zip(pop, fitness)), k)
