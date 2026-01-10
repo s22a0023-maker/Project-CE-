@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 st.title("🚦 Traffic Light Optimization using Genetic Algorithm")
-st.caption("JIE42903 – Evolutionary Computing | Case Study: Urban Traffic Control")
+st.caption("JIE42903 – Evolutionary Computing")
 
 # --------------------------------------------------
 # Dataset
@@ -77,19 +77,16 @@ def initialize_population(size):
     ]
 
 def single_objective_fitness(individual, flow):
-    """Minimize waiting time"""
     waiting_time = flow / sum(individual)
     return 1 / (1 + waiting_time)
 
 def multi_objective_fitness(individual, flow, queue, w1, w2):
-    """Balance waiting time & queue length"""
     wait_score = 1 / (1 + (flow / sum(individual)))
     queue_score = 1 / (1 + queue)
     return w1 * wait_score + w2 * queue_score
 
 def selection(pop, fitness):
-    idx = np.argmax(fitness)
-    return pop[idx]
+    return pop[np.argmax(fitness)]
 
 def crossover(p1, p2):
     return [p1[0], p2[1]] if random.random() < 0.5 else [p2[0], p1[1]]
@@ -105,7 +102,7 @@ def mutation(ind, rate):
 # --------------------------------------------------
 def run_ga(mode):
     pop = initialize_population(POP_SIZE)
-    best_fitness_history = []
+    fitness_history = []
     best_solution = None
 
     start = time.time()
@@ -115,14 +112,14 @@ def run_ga(mode):
             fitness = [single_objective_fitness(i, TRAFFIC_FLOW) for i in pop]
         else:
             fitness = [
-                multi_objective_fitness(i, TRAFFIC_FLOW, QUEUE_LENGTH,
-                                        WAIT_WEIGHT, QUEUE_WEIGHT)
-                for i in pop
+                multi_objective_fitness(
+                    i, TRAFFIC_FLOW, QUEUE_LENGTH, WAIT_WEIGHT, QUEUE_WEIGHT
+                ) for i in pop
             ]
 
         best_idx = np.argmax(fitness)
         best_solution = pop[best_idx]
-        best_fitness_history.append(fitness[best_idx])
+        fitness_history.append(fitness[best_idx])
 
         new_pop = []
         for _ in range(POP_SIZE):
@@ -135,102 +132,43 @@ def run_ga(mode):
         pop = new_pop
 
     exec_time = time.time() - start
-    return best_solution, best_fitness_history, exec_time
+    return best_solution, fitness_history, exec_time
 
 # --------------------------------------------------
 # Run Optimization
 # --------------------------------------------------
-st.subheader("Optimization Results")
+st.subheader("Optimization Output")
 
 if st.button("Run Genetic Algorithm"):
-    with st.spinner("Running Genetic Algorithm..."):
+    with st.spinner("Optimizing traffic signal timings..."):
         best_sol, fitness_hist, exec_time = run_ga(MODE)
 
     col1, col2 = st.columns(2)
 
+    # ---------------- Results ----------------
     with col1:
-        st.success("Optimal Traffic Light Configuration")
-        st.metric("Phase 1 Green Time (s)", best_sol[0])
-        st.metric("Phase 2 Green Time (s)", best_sol[1])
+        st.success("Optimal Traffic Light Timing")
+        st.metric("Phase 1 Green Time (seconds)", best_sol[0])
+        st.metric("Phase 2 Green Time (seconds)", best_sol[1])
         st.metric("Execution Time (seconds)", f"{exec_time:.4f}")
 
+    # ---------------- Graph 1: Convergence ----------------
     with col2:
-        fig, ax = plt.subplots()
-        ax.plot(fitness_hist)
-        ax.set_title("GA Convergence Curve")
-        ax.set_xlabel("Generation")
-        ax.set_ylabel("Fitness Value")
-        st.pyplot(fig)
+        fig1, ax1 = plt.subplots()
+        ax1.plot(fitness_hist)
+        ax1.set_title("GA Convergence Curve")
+        ax1.set_xlabel("Generation")
+        ax1.set_ylabel("Fitness Value")
+        st.pyplot(fig1)
 
-# --------------------------------------------------
-# 3. Performance Analysis
-# --------------------------------------------------
-st.subheader("3. Performance Analysis")
+    # ---------------- Graph 2: Traffic Light Optimization ----------------
+    st.subheader("Optimized Traffic Light Green Time Distribution")
 
-st.markdown("""
-**Convergence Rate:**  
-The fitness curve demonstrates rapid improvement during early generations, indicating effective exploration.
-Convergence stabilizes after approximately 30–40 generations, suggesting exploitation dominance.
+    fig2, ax2 = plt.subplots()
+    phases = ["Phase 1", "Phase 2"]
+    ax2.bar(phases, best_sol)
+    ax2.set_ylabel("Green Time (seconds)")
+    ax2.set_title("Optimized Green Signal Timing per Phase")
+    st.pyplot(fig2)
 
-**Accuracy:**  
-Optimized green times reduce estimated waiting time by increasing effective signal throughput.
-Multi-objective mode additionally controls queue growth.
-
-**Computational Efficiency:**  
-The GA completes within milliseconds, making it suitable for real-time decision support systems.
-""")
-
-st.markdown("""
-**Strengths:**
-- Fast convergence
-- Robust to noisy traffic conditions
-- Flexible objective formulation
-
-**Limitations:**
-- Simplified traffic model
-- No real-time sensor feedback
-- Fixed phase structure
-""")
-
-# --------------------------------------------------
-# 4. Extended Analysis (Multi-objective)
-# --------------------------------------------------
-st.subheader("4. Extended Multi-Objective Analysis")
-
-st.markdown("""
-This study extends the GA to **multi-objective optimization**, addressing:
-
-- **Objective 1:** Minimize average waiting time  
-- **Objective 2:** Minimize queue length  
-
-A weighted-sum strategy is used to balance conflicting objectives.
-Increasing waiting-time weight prioritizes flow efficiency, while higher queue weight favors congestion control.
-""")
-
-st.markdown("""
-**Adaptation & Trade-offs:**  
-The GA dynamically balances objectives through fitness weighting.
-This produces more stable signal timings under high congestion scenarios.
-
-**Impact on Solution Quality:**  
-Multi-objective solutions demonstrate slightly slower convergence but improved robustness and fairness
-compared to single-objective optimization.
-""")
-
-# --------------------------------------------------
-# 5. Streamlit Integration Evaluation
-# --------------------------------------------------
-st.subheader("5. Streamlit Integration")
-
-st.markdown("""
-The interactive Streamlit dashboard enables:
-
-- Dynamic parameter tuning
-- Real-time visualization of convergence
-- Comparative exploration of objectives
-- Improved interpretability for decision-makers
-
-This enhances transparency, usability, and educational value.
-""")
-
-st.success("✅ Computational Evolution Case Study Completed Successfully")
+st.success("✅ Optimization Completed")
